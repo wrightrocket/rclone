@@ -361,20 +361,24 @@ func (fh *RWFileHandle) Flush() error {
 // It isn't called directly from userspace so the error is ignored by
 // the kernel
 func (fh *RWFileHandle) Release() error {
-	fh.mu.Lock()
-	defer fh.mu.Unlock()
-	if fh.closed {
-		fs.Debugf(fh.logPrefix(), "RWFileHandle.Release nothing to do")
-		return nil
-	}
-	fs.Debugf(fh.logPrefix(), "RWFileHandle.Release closing")
-	err := fh.close()
-	if err != nil {
-		fs.Errorf(fh.logPrefix(), "RWFileHandle.Release error: %v", err)
-	} else {
-		// fs.Debugf(fh.logPrefix(), "RWFileHandle.Release OK")
-	}
-	return err
+	// Release asynchronously since the kernel is already calling us
+	// asynchronously and is going to ignore any errors we return.
+	go func() {
+		fh.mu.Lock()
+		defer fh.mu.Unlock()
+		if fh.closed {
+			fs.Debugf(fh.logPrefix(), "RWFileHandle.Release nothing to do")
+			return
+		}
+		fs.Debugf(fh.logPrefix(), "RWFileHandle.Release closing")
+		err := fh.close()
+		if err != nil {
+			fs.Errorf(fh.logPrefix(), "RWFileHandle.Release error: %v", err)
+		} else {
+			// fs.Debugf(fh.logPrefix(), "RWFileHandle.Release OK")
+		}
+	}()
+	return nil
 }
 
 // Size returns the size of the underlying file
